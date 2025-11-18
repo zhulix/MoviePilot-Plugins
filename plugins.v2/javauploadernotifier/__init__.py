@@ -5,7 +5,8 @@ from typing import Any, List, Dict, Tuple, Optional
 from app.core.event import eventmanager, Event
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas.types import EventType
+from app.schemas import Notification
+from app.schemas.types import EventType, NotificationType
 
 
 class JavaUploaderNotifier(_PluginBase):
@@ -22,7 +23,7 @@ class JavaUploaderNotifier(_PluginBase):
     # 插件图标
     plugin_icon = "cloud-upload.png"
     # 插件版本
-    plugin_version = "1.1"
+    plugin_version = "1.3"
     # 插件作者
     plugin_author = "Claude"
     # 作者主页
@@ -381,39 +382,131 @@ class JavaUploaderNotifier(_PluginBase):
             }
         ]
 
-    @eventmanager.register(EventType.TransferComplete)
-    def on_transfer_complete(self, event: Event):
+    @eventmanager.register(EventType.NoticeMessage)
+    def on_notice_message(self, event: Event):
         """
-        整理完成事件处理
+        接收通知消息事件，处理 NotificationType.Organize 类型的通知
         """
         if not self._enabled:
+            logger.debug("Java上传器通知插件未启用，跳过处理")
             return
 
         if not self._api_url or not self._api_token:
-            logger.warning("Java上传器通知插件未配置 API 地址或 Token")
+            logger.debug("Java上传器通知插件未配置 API 地址或 Token，跳过处理")
             return
 
         try:
             event_data = event.event_data
             if not event_data:
+                logger.debug("事件数据为空，跳过处理")
                 return
 
-            # 获取整理信息
-            context = event_data.get("context")
+            # 检查是否是 Organize 类型的通知
+            msg_type = event_data.get("type")
+            if not msg_type or msg_type != NotificationType.Organize:
+                logger.debug(f"消息类型不是 Organize，当前类型: {msg_type}，跳过处理")
+                return
+
+            logger.info(f"收到 NotificationType.Organize 通知消息")
+
+            # 获取通知消息和相关数据
+            meta = event_data.get("meta")
             mediainfo = event_data.get("mediainfo")
             transferinfo = event_data.get("transferinfo")
+            season_episode = event_data.get("season_episode")
+            username = event_data.get("username")
+
+            # 记录详细信息
+            if mediainfo:
+                logger.info(f"媒体信息: 标题={mediainfo.title}, 类型={mediainfo.type}, "
+                           f"TMDB ID={mediainfo.tmdb_id}, 年份={mediainfo.year}")
+            else:
+                logger.warning("mediainfo 为空")
 
             if not transferinfo:
-                logger.warning("整理信息为空，跳过推送")
+                logger.warning("transferinfo 为空，跳过推送")
                 return
+
+            # 获取目标路径用于日志
+            target_path = ""
+            if transferinfo.target_item and transferinfo.target_item.path:
+                target_path = str(transferinfo.target_item.path)
+            elif transferinfo.target_diritem and transferinfo.target_diritem.path:
+                target_path = str(transferinfo.target_diritem.path)
+
+            logger.info(f"整理信息: 目标路径={target_path}, "
+                       f"成功={transferinfo.success if hasattr(transferinfo, 'success') else 'N/A'}, "
+                       f"季集={season_episode}, 用户={username}")
 
             # 检查是否只推送成功的整理
             if self._only_success and not transferinfo.success:
-                logger.info(f"整理失败，跳过推送: {transferinfo.target_path if transferinfo.target_path else 'unknown'}")
+                logger.info(f"整理失败且配置为仅推送成功，跳过推送: {target_path}")
                 return
 
+            # 处理推送
+            self._process_transfer_push(meta, mediainfo, transferinfo, season_episode, username)
+
+        except Exception as e:
+            logger.error(f"通知消息事件处理异常: {str(e)}", exc_info=True)
+            self._update_stats(failed=True)
+
+    # @eventmanager.register(EventType.TransferComplete)
+    # def on_transfer_complete(self, event: Event):
+    #     """
+    #     整理完成事件处理（保留兼容性）
+    #     """
+    #     if not self._enabled:
+    #         return
+    #
+    #     if not self._api_url or not self._api_token:
+    #         logger.warning("Java上传器通知插件未配置 API 地址或 Token")
+    #         return
+    #
+    #     try:
+    #         event_data = event.event_data
+    #         if not event_data:
+    #             return
+    #
+    #         # 获取整理信息
+    #         mediainfo = event_data.get("mediainfo")
+    #         transferinfo = event_data.get("transferinfo")
+    #
+    #         if not transferinfo:
+    #             logger.warning("整理信息为空，跳过推送")
+    #             return
+    #
+    #         # 检查是否只推送成功的整理
+    #         if self._only_success and not transferinfo.success:
+    #             target_path = str(transferinfo.target_item.path) if transferinfo.target_item and transferinfo.target_item.path else 'unknown'
+    #             logger.info(f"整理失败，跳过推送: {target_path}")
+    #             return
+    #
+    #         # 处理推送
+    #         self._process_transfer_push(mediainfo, transferinfo)
+    #
+    #     except Exception as e:
+    #         logger.error(f"整理完成事件处理异常: {str(e)}", exc_info=True)
+    #         self._update_stats(failed=True)
+
+    def _process_transfer_push(self, meta, mediainfo, transferinfo, season_episode=None, username=None):
+        """
+        处理整理完成后的推送逻辑
+        :param meta: 元数据
+        :param mediainfo: 媒体信息
+        :param transferinfo: 整理信息
+        :param season_episode: 季集信息
+        :param username: 用户名
+        """
+        try:
             # 获取 TransferHistory ID
             transfer_history_id = self._get_transfer_history_id(transferinfo)
+
+            # 获取目标路径
+            target_path = ""
+            if transferinfo.target_item and transferinfo.target_item.path:
+                target_path = str(transferinfo.target_item.path)
+            elif transferinfo.target_diritem and transferinfo.target_diritem.path:
+                target_path = str(transferinfo.target_diritem.path)
 
             # 构造推送数据
             payload = {
@@ -423,22 +516,34 @@ class JavaUploaderNotifier(_PluginBase):
                 "type": mediainfo.type.value if mediainfo and mediainfo.type else "未知",
                 "season": transferinfo.season if hasattr(transferinfo, 'season') else None,
                 "episode": transferinfo.episode if hasattr(transferinfo, 'episode') else None,
+                "seasonEpisode": season_episode,  # 季集字符串，如 "S01E01"
                 "tmdbId": mediainfo.tmdb_id if mediainfo else None,
                 "imdbId": mediainfo.imdb_id if mediainfo else None,
-                "targetPath": str(transferinfo.target_path) if transferinfo.target_path else "",
+                "targetPath": target_path,
                 "fileSize": transferinfo.total_size if hasattr(transferinfo, 'total_size') else 0,
                 "fileCount": len(transferinfo.file_list_new) if hasattr(transferinfo, 'file_list_new') and transferinfo.file_list_new else 0,
                 "success": transferinfo.success if hasattr(transferinfo, 'success') else True,
                 "message": transferinfo.message if hasattr(transferinfo, 'message') else "",
+                "username": username,  # 触发整理的用户
                 "timestamp": datetime.now().isoformat()
             }
 
+            # 添加 meta 中的信息（如果存在）
+            if meta:
+                logger.debug(f"Meta 信息: name={meta.name if hasattr(meta, 'name') else 'N/A'}, "
+                           f"cn_name={meta.cn_name if hasattr(meta, 'cn_name') else 'N/A'}")
+
             # 推送到 Java API
-            logger.info(f"准备推送到 Java API: {payload.get('title', 'unknown')} - {payload.get('targetPath', 'unknown')}")
+            logger.info(f"准备推送到 Java API: 标题={payload.get('title', 'unknown')}, "
+                       f"路径={payload.get('targetPath', 'unknown')}, "
+                       f"季集={payload.get('seasonEpisode', 'N/A')}, "
+                       f"用户={payload.get('username', 'N/A')}")
+            logger.debug(f"完整 Payload: {payload}")
+
             self._push_to_api(payload)
 
         except Exception as e:
-            logger.error(f"整理完成事件处理异常: {str(e)}", exc_info=True)
+            logger.error(f"处理推送异常: {str(e)}", exc_info=True)
             self._update_stats(failed=True)
 
     def _get_transfer_history_id(self, transferinfo) -> Optional[int]:
@@ -449,8 +554,13 @@ class JavaUploaderNotifier(_PluginBase):
             from app.db.transferhistory_oper import TransferHistoryOper
 
             # 通过目标路径查询
-            if hasattr(transferinfo, 'target_path') and transferinfo.target_path:
-                target_path = str(transferinfo.target_path)
+            target_path = None
+            if transferinfo.target_item and transferinfo.target_item.path:
+                target_path = str(transferinfo.target_item.path)
+            elif transferinfo.target_diritem and transferinfo.target_diritem.path:
+                target_path = str(transferinfo.target_diritem.path)
+
+            if target_path:
                 oper = TransferHistoryOper()
                 # 查询最近的匹配记录
                 history = oper.get_by_dest(target_path)
@@ -469,12 +579,19 @@ class JavaUploaderNotifier(_PluginBase):
         retry_count = 0
         last_error = None
 
+        logger.info(f"开始推送到 Java API: {self._api_url}")
+        logger.debug(f"推送数据: transferHistoryId={data.get('transferHistoryId')}, "
+                    f"title={data.get('title')}, type={data.get('type')}, "
+                    f"targetPath={data.get('targetPath')}")
+
         while retry_count <= self._retry_times:
             try:
                 headers = {
                     "Content-Type": "application/json",
                     "X-API-Token": self._api_token
                 }
+
+                logger.debug(f"发送 POST 请求到 {self._api_url}，超时时间: {self._timeout}秒")
 
                 response = requests.post(
                     self._api_url,
@@ -483,30 +600,41 @@ class JavaUploaderNotifier(_PluginBase):
                     timeout=self._timeout
                 )
 
+                logger.debug(f"收到响应: HTTP {response.status_code}")
+
                 if response.status_code == 200:
-                    logger.info(f"推送成功: {data.get('title', 'unknown')}")
-                    result = response.json()
-                    logger.debug(f"响应: {result}")
+                    logger.info(f"✓ 推送成功: {data.get('title', 'unknown')} -> {data.get('targetPath', 'unknown')}")
+                    try:
+                        result = response.json()
+                        logger.info(f"服务器响应: {result}")
+                        if result.get("taskId"):
+                            logger.info(f"创建的上传任务 ID: {result.get('taskId')}")
+                    except Exception as e:
+                        logger.warning(f"解析响应 JSON 失败: {e}")
                     self._update_stats(success=True)
                     return
                 else:
-                    last_error = f"HTTP {response.status_code}: {response.text}"
-                    logger.warning(f"推送失败(尝试 {retry_count + 1}/{self._retry_times + 1}): {last_error}")
+                    last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+                    logger.warning(f"✗ 推送失败(尝试 {retry_count + 1}/{self._retry_times + 1}): {last_error}")
 
             except requests.exceptions.Timeout:
-                last_error = "请求超时"
-                logger.warning(f"推送超时(尝试 {retry_count + 1}/{self._retry_times + 1})")
-            except requests.exceptions.ConnectionError:
-                last_error = f"无法连接到 {self._api_url}"
-                logger.warning(f"连接失败(尝试 {retry_count + 1}/{self._retry_times + 1}): {last_error}")
+                last_error = f"请求超时({self._timeout}秒)"
+                logger.warning(f"✗ 推送超时(尝试 {retry_count + 1}/{self._retry_times + 1}): {last_error}")
+            except requests.exceptions.ConnectionError as e:
+                last_error = f"无法连接到 {self._api_url}: {str(e)}"
+                logger.warning(f"✗ 连接失败(尝试 {retry_count + 1}/{self._retry_times + 1}): {last_error}")
             except Exception as e:
                 last_error = str(e)
-                logger.error(f"推送异常(尝试 {retry_count + 1}/{self._retry_times + 1}): {last_error}")
+                logger.error(f"✗ 推送异常(尝试 {retry_count + 1}/{self._retry_times + 1}): {last_error}", exc_info=True)
 
             retry_count += 1
+            if retry_count <= self._retry_times:
+                logger.info(f"等待后重试...")
 
         # 所有重试都失败
-        logger.error(f"推送最终失败，已重试 {self._retry_times} 次: {last_error}")
+        logger.error(f"✗ 推送最终失败，已重试 {self._retry_times} 次")
+        logger.error(f"最后错误: {last_error}")
+        logger.error(f"失败的数据: title={data.get('title')}, targetPath={data.get('targetPath')}")
         self._update_stats(failed=True)
 
     def _update_stats(self, success: bool = False, failed: bool = False):

@@ -14,6 +14,9 @@ class JavaUploaderNotifier(_PluginBase):
     Java 上传器通知插件
 
     整理完成后推送到 Java Cloud Uploader 服务
+
+    @author: zhulixin
+    @create: 2025-11-19
     """
 
     # 插件名称
@@ -21,11 +24,11 @@ class JavaUploaderNotifier(_PluginBase):
     # 插件描述
     plugin_desc = "整理完成后推送到 Java Cloud Uploader 服务，自动上传到云盘"
     # 插件图标
-    plugin_icon = "cloud-upload.png"
+    plugin_icon = "Webdav_A.png"
     # 插件版本
-    plugin_version = "1.3"
+    plugin_version = "1.4"
     # 插件作者
-    plugin_author = "Claude"
+    plugin_author = "zhulixin"
     # 作者主页
     author_url = "https://github.com"
     # 插件配置项ID前缀
@@ -42,6 +45,8 @@ class JavaUploaderNotifier(_PluginBase):
     _only_success = True
     _retry_times = 3
     _timeout = 10
+    _notify_immediately = False
+    _test_mode = False
 
     def init_plugin(self, config: dict = None):
         """
@@ -52,10 +57,16 @@ class JavaUploaderNotifier(_PluginBase):
             self._api_url = config.get("api_url", "").rstrip("/")
             self._api_token = config.get("api_token", "")
             self._only_success = config.get("only_success", True)
-            self._retry_times = config.get("retry_times", 3)
-            self._timeout = config.get("timeout", 10)
+            self._retry_times = int(config.get("retry_times", 3))
+            self._timeout = int(config.get("timeout", 10))
+            self._notify_immediately = config.get("notify_immediately", False)
+            self._test_mode = config.get("test_mode", False)
 
         logger.info(f"Java上传器通知插件初始化完成: enabled={self._enabled}, api_url={self._api_url}")
+
+        # 显示统计信息
+        stats = self.get_data("stats") or {"total": 0, "success": 0, "failed": 0}
+        logger.info(f"统计信息: 总计={stats['total']}, 成功={stats['success']}, 失败={stats['failed']}")
 
     def get_state(self) -> bool:
         """
@@ -68,7 +79,15 @@ class JavaUploaderNotifier(_PluginBase):
         """
         定义远程控制命令
         """
-        return []
+        return [{
+            "cmd": "/java_upload_test",
+            "event": EventType.PluginAction,
+            "desc": "Java上传器测试",
+            "category": "",
+            "data": {
+                "action": "java_upload_test"
+            }
+        }]
 
     def get_api(self) -> List[Dict[str, Any]]:
         """
@@ -169,7 +188,7 @@ class JavaUploaderNotifier(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'only_success',
-                                            'label': '仅推送成功的整理',
+                                            'label': '仅推送成功',
                                         }
                                     }
                                 ]
@@ -189,9 +208,9 @@ class JavaUploaderNotifier(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'api_url',
-                                            'label': 'Java API 地址',
-                                            'placeholder': 'http://localhost:8085/api/webhook',
-                                            'hint': '请填写完整的API地址，不包含末尾斜杠'
+                                            'label': 'API地址',
+                                            'placeholder': 'http://your-server:8080/api/transfer',
+                                            'hint': '请输入Java上传器的API地址',
                                         }
                                     }
                                 ]
@@ -212,7 +231,8 @@ class JavaUploaderNotifier(_PluginBase):
                                         'props': {
                                             'model': 'api_token',
                                             'label': 'API Token',
-                                            'placeholder': 'change-me-please',
+                                            'placeholder': '请输入API访问令牌',
+                                            'hint': '用于API身份验证的Token',
                                             'type': 'password'
                                         }
                                     }
@@ -227,16 +247,21 @@ class JavaUploaderNotifier(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
-                                        'component': 'VTextField',
+                                        'component': 'VSelect',
                                         'props': {
                                             'model': 'retry_times',
                                             'label': '重试次数',
-                                            'type': 'number',
-                                            'hint': '推送失败时的重试次数'
+                                            'items': [
+                                                {'title': '不重试', 'value': 0},
+                                                {'title': '1次', 'value': 1},
+                                                {'title': '2次', 'value': 2},
+                                                {'title': '3次', 'value': 3},
+                                                {'title': '5次', 'value': 5}
+                                            ]
                                         }
                                     }
                                 ]
@@ -245,16 +270,37 @@ class JavaUploaderNotifier(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 4
                                 },
                                 'content': [
                                     {
-                                        'component': 'VTextField',
+                                        'component': 'VSelect',
                                         'props': {
                                             'model': 'timeout',
                                             'label': '超时时间(秒)',
-                                            'type': 'number',
-                                            'hint': 'API请求的超时时间'
+                                            'items': [
+                                                {'title': '5秒', 'value': 5},
+                                                {'title': '10秒', 'value': 10},
+                                                {'title': '30秒', 'value': 30},
+                                                {'title': '60秒', 'value': 60}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'test_mode',
+                                            'label': '测试模式',
+                                            'hint': '开启后将记录详细日志'
                                         }
                                     }
                                 ]
@@ -275,7 +321,7 @@ class JavaUploaderNotifier(_PluginBase):
                                         'props': {
                                             'type': 'info',
                                             'variant': 'tonal',
-                                            'text': '整理完成后会自动推送到配置的 Java API 地址，创建云盘上传任务。'
+                                            'text': '插件将监听整理完成通知，并推送到Java上传器服务进行云盘上传'
                                         }
                                     }
                                 ]
@@ -286,21 +332,32 @@ class JavaUploaderNotifier(_PluginBase):
             }
         ], {
             "enabled": False,
-            "api_url": "http://localhost:8085/api/webhook",
-            "api_token": "change-me-please",
+            "api_url": "",
+            "api_token": "",
             "only_success": True,
             "retry_times": 3,
-            "timeout": 10
+            "timeout": 10,
+            "notify_immediately": False,
+            "test_mode": False
         }
 
     def get_page(self) -> List[dict]:
         """
-        拼装插件详情页面，需要返回页面配置，同时附带数据
+        拼装插件详情页面，展示统计信息
         """
-        # 获取推送统计
+        # 获取统计数据
         stats = self.get_data("stats") or {"total": 0, "success": 0, "failed": 0}
 
-        return [
+        # 获取最近推送记录
+        recent_pushes = self.get_data("recent_pushes") or []
+
+        # 计算成功率
+        success_rate = 0
+        if stats['total'] > 0:
+            success_rate = round(stats['success'] / stats['total'] * 100, 1)
+
+        # 构造统计卡片
+        stat_cards = [
             {
                 'component': 'VRow',
                 'content': [
@@ -308,13 +365,13 @@ class JavaUploaderNotifier(_PluginBase):
                         'component': 'VCol',
                         'props': {
                             'cols': 12,
-                            'md': 4
+                            'md': 3
                         },
                         'content': [
                             {
                                 'component': 'VCard',
                                 'props': {
-                                    'variant': 'tonal'
+                                    'variant': 'tonal',
                                 },
                                 'content': [
                                     {
@@ -322,7 +379,22 @@ class JavaUploaderNotifier(_PluginBase):
                                         'props': {
                                             'class': 'text-center'
                                         },
-                                        'text': f'总推送次数\n{stats["total"]}'
+                                        'content': [
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'text-h6'
+                                                },
+                                                'text': '总推送次数'
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'text-h4 mt-2'
+                                                },
+                                                'text': str(stats['total'])
+                                            }
+                                        ]
                                     }
                                 ]
                             }
@@ -332,7 +404,7 @@ class JavaUploaderNotifier(_PluginBase):
                         'component': 'VCol',
                         'props': {
                             'cols': 12,
-                            'md': 4
+                            'md': 3
                         },
                         'content': [
                             {
@@ -347,7 +419,22 @@ class JavaUploaderNotifier(_PluginBase):
                                         'props': {
                                             'class': 'text-center'
                                         },
-                                        'text': f'成功次数\n{stats["success"]}'
+                                        'content': [
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'text-h6'
+                                                },
+                                                'text': '成功次数'
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'text-h4 mt-2'
+                                                },
+                                                'text': str(stats['success'])
+                                            }
+                                        ]
                                     }
                                 ]
                             }
@@ -357,7 +444,7 @@ class JavaUploaderNotifier(_PluginBase):
                         'component': 'VCol',
                         'props': {
                             'cols': 12,
-                            'md': 4
+                            'md': 3
                         },
                         'content': [
                             {
@@ -372,7 +459,62 @@ class JavaUploaderNotifier(_PluginBase):
                                         'props': {
                                             'class': 'text-center'
                                         },
-                                        'text': f'失败次数\n{stats["failed"]}'
+                                        'content': [
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'text-h6'
+                                                },
+                                                'text': '失败次数'
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'text-h4 mt-2'
+                                                },
+                                                'text': str(stats['failed'])
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12,
+                            'md': 3
+                        },
+                        'content': [
+                            {
+                                'component': 'VCard',
+                                'props': {
+                                    'variant': 'tonal',
+                                    'color': 'info'
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VCardText',
+                                        'props': {
+                                            'class': 'text-center'
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'text-h6'
+                                                },
+                                                'text': '成功率'
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'text-h4 mt-2'
+                                                },
+                                                'text': f'{success_rate}%'
+                                            }
+                                        ]
                                     }
                                 ]
                             }
@@ -382,29 +524,134 @@ class JavaUploaderNotifier(_PluginBase):
             }
         ]
 
+        # 构造最近记录表格
+        recent_records = []
+        if recent_pushes:
+            record_rows = []
+            for push in recent_pushes[-10:]:  # 只显示最近10条
+                status_icon = '✅' if push.get('success') else '❌'
+                record_rows.append({
+                    'component': 'tr',
+                    'content': [
+                        {
+                            'component': 'td',
+                            'text': push.get('timestamp', '')
+                        },
+                        {
+                            'component': 'td',
+                            'text': push.get('title', 'N/A')
+                        },
+                        {
+                            'component': 'td',
+                            'text': push.get('target_path', 'N/A')
+                        },
+                        {
+                            'component': 'td',
+                            'text': status_icon
+                        }
+                    ]
+                })
+
+            recent_records = [
+                {
+                    'component': 'VRow',
+                    'props': {
+                        'class': 'mt-3'
+                    },
+                    'content': [
+                        {
+                            'component': 'VCol',
+                            'props': {
+                                'cols': 12
+                            },
+                            'content': [
+                                {
+                                    'component': 'VCard',
+                                    'content': [
+                                        {
+                                            'component': 'VCardTitle',
+                                            'text': '最近推送记录'
+                                        },
+                                        {
+                                            'component': 'VCardText',
+                                            'content': [
+                                                {
+                                                    'component': 'VTable',
+                                                    'props': {
+                                                        'dense': True
+                                                    },
+                                                    'content': [
+                                                        {
+                                                            'component': 'thead',
+                                                            'content': [
+                                                                {
+                                                                    'component': 'tr',
+                                                                    'content': [
+                                                                        {
+                                                                            'component': 'th',
+                                                                            'text': '时间'
+                                                                        },
+                                                                        {
+                                                                            'component': 'th',
+                                                                            'text': '标题'
+                                                                        },
+                                                                        {
+                                                                            'component': 'th',
+                                                                            'text': '路径'
+                                                                        },
+                                                                        {
+                                                                            'component': 'th',
+                                                                            'text': '状态'
+                                                                        }
+                                                                    ]
+                                                                }
+                                                            ]
+                                                        },
+                                                        {
+                                                            'component': 'tbody',
+                                                            'content': record_rows
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+
+        return stat_cards + recent_records
+
     @eventmanager.register(EventType.NoticeMessage)
     def on_notice_message(self, event: Event):
         """
         接收通知消息事件，处理 NotificationType.Organize 类型的通知
         """
         if not self._enabled:
-            logger.debug("Java上传器通知插件未启用，跳过处理")
+            if self._test_mode:
+                logger.debug("Java上传器通知插件未启用，跳过处理")
             return
 
         if not self._api_url or not self._api_token:
-            logger.debug("Java上传器通知插件未配置 API 地址或 Token，跳过处理")
+            if self._test_mode:
+                logger.debug("Java上传器通知插件未配置 API 地址或 Token，跳过处理")
             return
 
         try:
             event_data = event.event_data
             if not event_data:
-                logger.debug("事件数据为空，跳过处理")
+                if self._test_mode:
+                    logger.debug("事件数据为空，跳过处理")
                 return
 
             # 检查是否是 Organize 类型的通知
             msg_type = event_data.get("type")
             if not msg_type or msg_type != NotificationType.Organize:
-                logger.debug(f"消息类型不是 Organize，当前类型: {msg_type}，跳过处理")
+                if self._test_mode:
+                    logger.debug(f"消息类型不是 Organize，当前类型: {msg_type}，跳过处理")
                 return
 
             logger.info(f"收到 NotificationType.Organize 通知消息")
@@ -450,43 +697,33 @@ class JavaUploaderNotifier(_PluginBase):
             logger.error(f"通知消息事件处理异常: {str(e)}", exc_info=True)
             self._update_stats(failed=True)
 
-    # @eventmanager.register(EventType.TransferComplete)
-    # def on_transfer_complete(self, event: Event):
-    #     """
-    #     整理完成事件处理（保留兼容性）
-    #     """
-    #     if not self._enabled:
-    #         return
-    #
-    #     if not self._api_url or not self._api_token:
-    #         logger.warning("Java上传器通知插件未配置 API 地址或 Token")
-    #         return
-    #
-    #     try:
-    #         event_data = event.event_data
-    #         if not event_data:
-    #             return
-    #
-    #         # 获取整理信息
-    #         mediainfo = event_data.get("mediainfo")
-    #         transferinfo = event_data.get("transferinfo")
-    #
-    #         if not transferinfo:
-    #             logger.warning("整理信息为空，跳过推送")
-    #             return
-    #
-    #         # 检查是否只推送成功的整理
-    #         if self._only_success and not transferinfo.success:
-    #             target_path = str(transferinfo.target_item.path) if transferinfo.target_item and transferinfo.target_item.path else 'unknown'
-    #             logger.info(f"整理失败，跳过推送: {target_path}")
-    #             return
-    #
-    #         # 处理推送
-    #         self._process_transfer_push(mediainfo, transferinfo)
-    #
-    #     except Exception as e:
-    #         logger.error(f"整理完成事件处理异常: {str(e)}", exc_info=True)
-    #         self._update_stats(failed=True)
+    @eventmanager.register(EventType.PluginAction)
+    def handle_plugin_action(self, event: Event):
+        """
+        处理插件动作
+        """
+        if not event or not event.event_data:
+            return
+
+        event_data = event.event_data
+        if not event_data or event_data.get("action") != "java_upload_test":
+            return
+
+        logger.info("执行Java上传器连接测试...")
+        result = self.test_connection()
+
+        if result['success']:
+            self.post_message(
+                mtype=NotificationType.SiteMessage,
+                title="Java上传器测试成功",
+                text=f"连接成功: {result.get('message', '')}"
+            )
+        else:
+            self.post_message(
+                mtype=NotificationType.SiteMessage,
+                title="Java上传器测试失败",
+                text=f"连接失败: {result.get('message', '')}"
+            )
 
     def _process_transfer_push(self, meta, mediainfo, transferinfo, season_episode=None, username=None):
         """
@@ -508,43 +745,75 @@ class JavaUploaderNotifier(_PluginBase):
             elif transferinfo.target_diritem and transferinfo.target_diritem.path:
                 target_path = str(transferinfo.target_diritem.path)
 
+            # 获取文件列表
+            file_list = []
+            if hasattr(transferinfo, 'file_list_new') and transferinfo.file_list_new:
+                file_list = [str(f) for f in transferinfo.file_list_new]
+
             # 构造推送数据
             payload = {
                 "transferHistoryId": transfer_history_id,
-                "title": mediainfo.title if mediainfo else "",
-                "year": str(mediainfo.year) if mediainfo and mediainfo.year else "",
-                "type": mediainfo.type.value if mediainfo and mediainfo.type else "未知",
-                "season": transferinfo.season if hasattr(transferinfo, 'season') else None,
-                "episode": transferinfo.episode if hasattr(transferinfo, 'episode') else None,
-                "seasonEpisode": season_episode,  # 季集字符串，如 "S01E01"
+                "title": mediainfo.title if mediainfo else (meta.name if meta and hasattr(meta, 'name') else ""),
+                "year": str(mediainfo.year) if mediainfo and mediainfo.year else (str(meta.year) if meta and hasattr(meta, 'year') else ""),
+                "type": mediainfo.type.value if mediainfo and mediainfo.type else (meta.type.value if meta and hasattr(meta, 'type') else "未知"),
+                "season": meta.begin_season if meta and hasattr(meta, 'begin_season') else None,
+                "episode": meta.episode_list if meta and hasattr(meta, 'episode_list') else None,
+                "seasonEpisode": season_episode,
                 "tmdbId": mediainfo.tmdb_id if mediainfo else None,
                 "imdbId": mediainfo.imdb_id if mediainfo else None,
+                "tvdbId": mediainfo.tvdb_id if mediainfo else None,
+                "doubanId": mediainfo.douban_id if mediainfo else None,
                 "targetPath": target_path,
+                "fileList": file_list,
                 "fileSize": transferinfo.total_size if hasattr(transferinfo, 'total_size') else 0,
-                "fileCount": len(transferinfo.file_list_new) if hasattr(transferinfo, 'file_list_new') and transferinfo.file_list_new else 0,
+                "fileCount": len(file_list),
                 "success": transferinfo.success if hasattr(transferinfo, 'success') else True,
                 "message": transferinfo.message if hasattr(transferinfo, 'message') else "",
-                "username": username,  # 触发整理的用户
-                "timestamp": datetime.now().isoformat()
+                "username": username,
+                "timestamp": datetime.now().isoformat(),
+                "category": mediainfo.category if mediainfo and hasattr(mediainfo, 'category') else None,
+                "voteAverage": mediainfo.vote_average if mediainfo and hasattr(mediainfo, 'vote_average') else None,
+                "overview": mediainfo.overview if mediainfo and hasattr(mediainfo, 'overview') else None,
+                "poster": mediainfo.get_poster_image() if mediainfo and hasattr(mediainfo, 'get_poster_image') else None,
+                "backdrop": mediainfo.get_backdrop_image() if mediainfo and hasattr(mediainfo, 'get_backdrop_image') else None,
             }
 
             # 添加 meta 中的信息（如果存在）
             if meta:
-                logger.debug(f"Meta 信息: name={meta.name if hasattr(meta, 'name') else 'N/A'}, "
-                           f"cn_name={meta.cn_name if hasattr(meta, 'cn_name') else 'N/A'}")
+                if self._test_mode:
+                    logger.debug(f"Meta 信息: name={meta.name if hasattr(meta, 'name') else 'N/A'}, "
+                               f"cn_name={meta.cn_name if hasattr(meta, 'cn_name') else 'N/A'}")
 
             # 推送到 Java API
             logger.info(f"准备推送到 Java API: 标题={payload.get('title', 'unknown')}, "
                        f"路径={payload.get('targetPath', 'unknown')}, "
                        f"季集={payload.get('seasonEpisode', 'N/A')}, "
                        f"用户={payload.get('username', 'N/A')}")
-            logger.debug(f"完整 Payload: {payload}")
+
+            if self._test_mode:
+                logger.debug(f"完整 Payload: {payload}")
 
             self._push_to_api(payload)
+
+            # 保存最近推送记录
+            self._save_recent_push({
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'title': payload.get('title', 'N/A'),
+                'target_path': target_path,
+                'success': True
+            })
 
         except Exception as e:
             logger.error(f"处理推送异常: {str(e)}", exc_info=True)
             self._update_stats(failed=True)
+
+            # 保存失败记录
+            self._save_recent_push({
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'title': mediainfo.title if mediainfo else 'N/A',
+                'target_path': target_path if 'target_path' in locals() else 'N/A',
+                'success': False
+            })
 
     def _get_transfer_history_id(self, transferinfo) -> Optional[int]:
         """
@@ -565,6 +834,8 @@ class JavaUploaderNotifier(_PluginBase):
                 # 查询最近的匹配记录
                 history = oper.get_by_dest(target_path)
                 if history:
+                    if self._test_mode:
+                        logger.debug(f"找到 TransferHistory ID: {history.id}")
                     return history.id
         except Exception as e:
             logger.error(f"获取 TransferHistory ID 失败: {str(e)}")
@@ -580,9 +851,10 @@ class JavaUploaderNotifier(_PluginBase):
         last_error = None
 
         logger.info(f"开始推送到 Java API: {self._api_url}")
-        logger.debug(f"推送数据: transferHistoryId={data.get('transferHistoryId')}, "
-                    f"title={data.get('title')}, type={data.get('type')}, "
-                    f"targetPath={data.get('targetPath')}")
+        if self._test_mode:
+            logger.debug(f"推送数据: transferHistoryId={data.get('transferHistoryId')}, "
+                        f"title={data.get('title')}, type={data.get('type')}, "
+                        f"targetPath={data.get('targetPath')}")
 
         while retry_count <= self._retry_times:
             try:
@@ -591,7 +863,8 @@ class JavaUploaderNotifier(_PluginBase):
                     "X-API-Token": self._api_token
                 }
 
-                logger.debug(f"发送 POST 请求到 {self._api_url}，超时时间: {self._timeout}秒")
+                if self._test_mode:
+                    logger.debug(f"发送 POST 请求到 {self._api_url}，超时时间: {self._timeout}秒")
 
                 response = requests.post(
                     self._api_url,
@@ -600,7 +873,8 @@ class JavaUploaderNotifier(_PluginBase):
                     timeout=self._timeout
                 )
 
-                logger.debug(f"收到响应: HTTP {response.status_code}")
+                if self._test_mode:
+                    logger.debug(f"收到响应: HTTP {response.status_code}")
 
                 if response.status_code == 200:
                     logger.info(f"✓ 推送成功: {data.get('title', 'unknown')} -> {data.get('targetPath', 'unknown')}")
@@ -629,6 +903,8 @@ class JavaUploaderNotifier(_PluginBase):
 
             retry_count += 1
             if retry_count <= self._retry_times:
+                import time
+                time.sleep(2)  # 等待2秒后重试
                 logger.info(f"等待后重试...")
 
         # 所有重试都失败
@@ -652,8 +928,28 @@ class JavaUploaderNotifier(_PluginBase):
         except Exception as e:
             logger.error(f"更新统计数据失败: {str(e)}")
 
+    def _save_recent_push(self, push_data: dict):
+        """
+        保存最近推送记录
+        """
+        try:
+            recent_pushes = self.get_data("recent_pushes") or []
+            recent_pushes.append(push_data)
+            # 只保留最近100条
+            if len(recent_pushes) > 100:
+                recent_pushes = recent_pushes[-100:]
+            self.save_data("recent_pushes", recent_pushes)
+        except Exception as e:
+            logger.error(f"保存推送记录失败: {str(e)}")
+
+    def get_service(self) -> List[Dict[str, Any]]:
+        """
+        注册插件公共服务
+        """
+        return []
+
     def stop_service(self):
         """
         退出插件
         """
-        pass
+        logger.info("Java上传器通知插件已停止")

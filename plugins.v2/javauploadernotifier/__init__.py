@@ -63,7 +63,9 @@ class JavaUploaderNotifier(_PluginBase):
             self._test_mode = config.get("test_mode", False)
 
         logger.info(f"【JavaUploaderNotifier】插件初始化完成: enabled={self._enabled}, api_url={self._api_url}")
-        logger.info(f"【JavaUploaderNotifier】事件监听器已注册: EventType.NoticeMessage -> on_notice_message")
+        logger.info(f"【JavaUploaderNotifier】事件监听器已注册:")
+        logger.info(f"  1. EventType.TransferComplete -> on_transfer_complete (执行推送)")
+        logger.info(f"  2. EventType.NoticeMessage -> on_notice_message (仅日志对比)")
 
         # 显示统计信息
         stats = self.get_data("stats") or {"total": 0, "success": 0, "failed": 0}
@@ -626,12 +628,13 @@ class JavaUploaderNotifier(_PluginBase):
 
         return stat_cards + recent_records
 
-    @eventmanager.register(EventType.NoticeMessage)
-    def on_notice_message(self, event: Event):
+    @eventmanager.register(EventType.TransferComplete)
+    def on_transfer_complete(self, event: Event):
         """
-        接收通知消息事件，处理 NotificationType.Organize 类型的通知
+        接收整理完成事件（每个文件整理完成后触发）
         """
-        logger.info(f"【JavaUploaderNotifier】on_notice_message 被调用! enabled={self._enabled}")
+        logger.info(f"========== 【TransferComplete 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_transfer_complete 被调用! enabled={self._enabled}")
 
         if not self._enabled:
             logger.info("【JavaUploaderNotifier】插件未启用，跳过处理")
@@ -647,56 +650,126 @@ class JavaUploaderNotifier(_PluginBase):
                 logger.warning("【JavaUploaderNotifier】事件数据为空，跳过处理")
                 return
 
-            # 检查是否是 Organize 类型的通知
-            msg_type = event_data.get("type")
-            logger.info(f"【JavaUploaderNotifier】收到消息类型: {msg_type}")
+            # 打印完整的事件数据
+            logger.info(f"【TransferComplete】event_data keys: {list(event_data.keys())}")
 
-            if not msg_type or msg_type != NotificationType.Organize:
-                logger.debug(f"【JavaUploaderNotifier】消息类型不是 Organize，当前类型: {msg_type}，跳过处理")
-                return
-
-            logger.info(f"【JavaUploaderNotifier】收到 NotificationType.Organize 通知消息")
-
-            # 获取通知消息和相关数据
+            # 获取事件数据
+            fileitem = event_data.get("fileitem")
             meta = event_data.get("meta")
             mediainfo = event_data.get("mediainfo")
             transferinfo = event_data.get("transferinfo")
-            season_episode = event_data.get("season_episode")
-            username = event_data.get("username")
+            downloader = event_data.get("downloader")
+            download_hash = event_data.get("download_hash")
 
-            # 记录详细信息
+            # 详细日志
+            logger.info(f"【TransferComplete】fileitem: {fileitem.path if fileitem else 'None'}")
+            logger.info(f"【TransferComplete】meta: {meta.name if meta and hasattr(meta, 'name') else 'None'}")
+            logger.info(f"【TransferComplete】mediainfo: {mediainfo.title if mediainfo else 'None'}")
+            logger.info(f"【TransferComplete】transferinfo: {type(transferinfo).__name__ if transferinfo else 'None'}")
+            logger.info(f"【TransferComplete】downloader: {downloader}")
+            logger.info(f"【TransferComplete】download_hash: {download_hash}")
+
             if mediainfo:
-                logger.info(f"媒体信息: 标题={mediainfo.title}, 类型={mediainfo.type}, "
+                logger.info(f"【TransferComplete】媒体详情: 标题={mediainfo.title}, 类型={mediainfo.type}, "
                            f"TMDB ID={mediainfo.tmdb_id}, 年份={mediainfo.year}")
             else:
-                logger.warning("mediainfo 为空")
+                logger.warning("【TransferComplete】mediainfo 为空")
 
             if not transferinfo:
-                logger.warning("transferinfo 为空，跳过推送")
+                logger.warning("【TransferComplete】transferinfo 为空，跳过推送")
                 return
 
-            # 获取目标路径用于日志
+            # 获取目标路径
             target_path = ""
             if transferinfo.target_item and transferinfo.target_item.path:
                 target_path = str(transferinfo.target_item.path)
             elif transferinfo.target_diritem and transferinfo.target_diritem.path:
                 target_path = str(transferinfo.target_diritem.path)
 
-            logger.info(f"整理信息: 目标路径={target_path}, "
-                       f"成功={transferinfo.success if hasattr(transferinfo, 'success') else 'N/A'}, "
-                       f"季集={season_episode}, 用户={username}")
+            logger.info(f"【TransferComplete】整理信息: 目标路径={target_path}, "
+                       f"成功={transferinfo.success if hasattr(transferinfo, 'success') else 'N/A'}")
 
             # 检查是否只推送成功的整理
             if self._only_success and not transferinfo.success:
-                logger.info(f"整理失败且配置为仅推送成功，跳过推送: {target_path}")
+                logger.info(f"【TransferComplete】整理失败且配置为仅推送成功，跳过推送")
                 return
+
+            # 构造 season_episode 字符串
+            season_episode = None
+            if meta and mediainfo:
+                from app.schemas.types import MediaType
+                from app.utils.string import StringUtils
+                if mediainfo.type == MediaType.TV:
+                    if meta.season and meta.episode_list:
+                        season_episode = f"{meta.season} {StringUtils.format_ep(meta.episode_list)}"
+                    elif meta.season:
+                        season_episode = f"{meta.season}"
+
+            # 获取用户名
+            username = None
+            if hasattr(transferinfo, 'username'):
+                username = transferinfo.username
+
+            logger.info(f"【TransferComplete】准备推送: 季集={season_episode}, 用户={username}")
 
             # 处理推送
             self._process_transfer_push(meta, mediainfo, transferinfo, season_episode, username)
 
         except Exception as e:
-            logger.error(f"通知消息事件处理异常: {str(e)}", exc_info=True)
+            logger.error(f"【TransferComplete】事件处理异常: {str(e)}", exc_info=True)
             self._update_stats(failed=True)
+
+    @eventmanager.register(EventType.NoticeMessage)
+    def on_notice_message(self, event: Event):
+        """
+        接收通知消息事件（整理作业完成时触发，可能合并多个文件）
+        """
+        logger.info(f"========== 【NoticeMessage 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_notice_message 被调用! enabled={self._enabled}")
+
+        # 这里不做实际推送，只打印日志对比数据
+        try:
+            event_data = event.event_data
+            if not event_data:
+                logger.warning("【NoticeMessage】事件数据为空")
+                return
+
+            # 打印完整的事件数据
+            logger.info(f"【NoticeMessage】event_data keys: {list(event_data.keys())}")
+
+            # 获取消息类型
+            msg_type = event_data.get("type")
+            logger.info(f"【NoticeMessage】消息类型: {msg_type}")
+
+            # 检查是否是 Organize 类型
+            if msg_type and msg_type == NotificationType.Organize:
+                logger.info(f"【NoticeMessage】这是 Organize 类型的通知")
+
+                # 尝试获取各种数据
+                title = event_data.get("title")
+                text = event_data.get("text")
+                image = event_data.get("image")
+                username = event_data.get("username")
+
+                # 尝试获取 meta、mediainfo、transferinfo
+                meta = event_data.get("meta")
+                mediainfo = event_data.get("mediainfo")
+                transferinfo = event_data.get("transferinfo")
+
+                logger.info(f"【NoticeMessage】title: {title}")
+                logger.info(f"【NoticeMessage】text: {text}")
+                logger.info(f"【NoticeMessage】image: {image}")
+                logger.info(f"【NoticeMessage】username: {username}")
+                logger.info(f"【NoticeMessage】meta: {meta}")
+                logger.info(f"【NoticeMessage】mediainfo: {mediainfo}")
+                logger.info(f"【NoticeMessage】transferinfo: {transferinfo}")
+
+                logger.warning(f"【NoticeMessage】注意：meta、mediainfo、transferinfo 都是 None！只能获取通知文本。")
+            else:
+                logger.debug(f"【NoticeMessage】不是 Organize 类型，跳过: {msg_type}")
+
+        except Exception as e:
+            logger.error(f"【NoticeMessage】事件处理异常: {str(e)}", exc_info=True)
 
     @eventmanager.register(EventType.PluginAction)
     def handle_plugin_action(self, event: Event):

@@ -574,11 +574,12 @@
         "name": "java",
     "description": "java",
     "labels": "开发",
-    "version": "1.3",
+    "version": "1.5",
     "icon": "Alist_encrypt_A.png",
     "author": "z",
     "level": 1,
     "history": {
+      "v1.5": "fix",
       "v1.1": "upload"
     }
   }

@@ -26,7 +26,7 @@ class JavaUploaderNotifier(_PluginBase):
     # 插件图标
     plugin_icon = "Webdav_A.png"
     # 插件版本
-    plugin_version = "1.4"
+    plugin_version = "1.5"
     # 插件作者
     plugin_author = "zhulixin"
     # 作者主页
@@ -62,11 +62,12 @@ class JavaUploaderNotifier(_PluginBase):
             self._notify_immediately = config.get("notify_immediately", False)
             self._test_mode = config.get("test_mode", False)
 
-        logger.info(f"Java上传器通知插件初始化完成: enabled={self._enabled}, api_url={self._api_url}")
+        logger.info(f"【JavaUploaderNotifier】插件初始化完成: enabled={self._enabled}, api_url={self._api_url}")
+        logger.info(f"【JavaUploaderNotifier】事件监听器已注册: EventType.NoticeMessage -> on_notice_message")
 
         # 显示统计信息
         stats = self.get_data("stats") or {"total": 0, "success": 0, "failed": 0}
-        logger.info(f"统计信息: 总计={stats['total']}, 成功={stats['success']}, 失败={stats['failed']}")
+        logger.info(f"【JavaUploaderNotifier】统计信息: 总计={stats['total']}, 成功={stats['success']}, 失败={stats['failed']}")
 
     def get_state(self) -> bool:
         """
@@ -630,31 +631,31 @@ class JavaUploaderNotifier(_PluginBase):
         """
         接收通知消息事件，处理 NotificationType.Organize 类型的通知
         """
+        logger.info(f"【JavaUploaderNotifier】on_notice_message 被调用! enabled={self._enabled}")
+
         if not self._enabled:
-            if self._test_mode:
-                logger.debug("Java上传器通知插件未启用，跳过处理")
+            logger.info("【JavaUploaderNotifier】插件未启用，跳过处理")
             return
 
         if not self._api_url or not self._api_token:
-            if self._test_mode:
-                logger.debug("Java上传器通知插件未配置 API 地址或 Token，跳过处理")
+            logger.info("【JavaUploaderNotifier】未配置 API 地址或 Token，跳过处理")
             return
 
         try:
             event_data = event.event_data
             if not event_data:
-                if self._test_mode:
-                    logger.debug("事件数据为空，跳过处理")
+                logger.warning("【JavaUploaderNotifier】事件数据为空，跳过处理")
                 return
 
             # 检查是否是 Organize 类型的通知
             msg_type = event_data.get("type")
+            logger.info(f"【JavaUploaderNotifier】收到消息类型: {msg_type}")
+
             if not msg_type or msg_type != NotificationType.Organize:
-                if self._test_mode:
-                    logger.debug(f"消息类型不是 Organize，当前类型: {msg_type}，跳过处理")
+                logger.debug(f"【JavaUploaderNotifier】消息类型不是 Organize，当前类型: {msg_type}，跳过处理")
                 return
 
-            logger.info(f"收到 NotificationType.Organize 通知消息")
+            logger.info(f"【JavaUploaderNotifier】收到 NotificationType.Organize 通知消息")
 
             # 获取通知消息和相关数据
             meta = event_data.get("meta")

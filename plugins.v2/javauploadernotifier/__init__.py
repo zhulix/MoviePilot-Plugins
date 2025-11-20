@@ -63,9 +63,32 @@ class JavaUploaderNotifier(_PluginBase):
             self._test_mode = config.get("test_mode", False)
 
         logger.info(f"【JavaUploaderNotifier】插件初始化完成: enabled={self._enabled}, api_url={self._api_url}")
-        logger.info(f"【JavaUploaderNotifier】事件监听器已注册:")
+        logger.info(f"【JavaUploaderNotifier】事件监听器已注册，监听所有事件类型:")
         logger.info(f"  1. EventType.TransferComplete -> on_transfer_complete (执行推送)")
-        logger.info(f"  2. EventType.NoticeMessage -> on_notice_message (仅日志对比)")
+        logger.info(f"  2. EventType.NoticeMessage -> on_notice_message (日志对比)")
+        logger.info(f"  3. EventType.PluginAction -> handle_plugin_action")
+        logger.info(f"  4. EventType.PluginReload -> on_plugin_reload")
+        logger.info(f"  5. EventType.PluginTriggered -> on_plugin_triggered")
+        logger.info(f"  6. EventType.CommandExcute -> on_command_execute")
+        logger.info(f"  7. EventType.SiteDeleted -> on_site_deleted")
+        logger.info(f"  8. EventType.SiteUpdated -> on_site_updated")
+        logger.info(f"  9. EventType.SiteRefreshed -> on_site_refreshed")
+        logger.info(f"  10. EventType.DownloadAdded -> on_download_added")
+        logger.info(f"  11. EventType.HistoryDeleted -> on_history_deleted")
+        logger.info(f"  12. EventType.DownloadFileDeleted -> on_download_file_deleted")
+        logger.info(f"  13. EventType.DownloadDeleted -> on_download_deleted")
+        logger.info(f"  14. EventType.UserMessage -> on_user_message")
+        logger.info(f"  15. EventType.WebhookMessage -> on_webhook_message")
+        logger.info(f"  16. EventType.SubscribeAdded -> on_subscribe_added")
+        logger.info(f"  17. EventType.SubscribeModified -> on_subscribe_modified")
+        logger.info(f"  18. EventType.SubscribeDeleted -> on_subscribe_deleted")
+        logger.info(f"  19. EventType.SubscribeComplete -> on_subscribe_complete")
+        logger.info(f"  20. EventType.SystemError -> on_system_error")
+        logger.info(f"  21. EventType.MetadataScrape -> on_metadata_scrape")
+        logger.info(f"  22. EventType.ModuleReload -> on_module_reload")
+        logger.info(f"  23. EventType.ConfigChanged -> on_config_changed")
+        logger.info(f"  24. EventType.MessageAction -> on_message_action")
+        logger.info(f"  25. EventType.WorkflowExecute -> on_workflow_execute")
 
         # 显示统计信息
         stats = self.get_data("stats") or {"total": 0, "success": 0, "failed": 0}
@@ -776,11 +799,18 @@ class JavaUploaderNotifier(_PluginBase):
         """
         处理插件动作
         """
+        logger.info(f"========== 【PluginAction 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】handle_plugin_action 被调用!")
+
         if not event or not event.event_data:
+            logger.info(f"【PluginAction】事件数据为空")
             return
 
         event_data = event.event_data
+        logger.info(f"【PluginAction】event_data: {event_data}")
+
         if not event_data or event_data.get("action") != "java_upload_test":
+            logger.info(f"【PluginAction】不是 java_upload_test 动作，跳过")
             return
 
         logger.info("执行Java上传器连接测试...")
@@ -798,6 +828,182 @@ class JavaUploaderNotifier(_PluginBase):
                 title="Java上传器测试失败",
                 text=f"连接失败: {result.get('message', '')}"
             )
+
+    @eventmanager.register(EventType.PluginReload)
+    def on_plugin_reload(self, event: Event):
+        """监听插件重载事件"""
+        logger.info(f"========== 【PluginReload 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_plugin_reload 被调用!")
+        if event and event.event_data:
+            logger.info(f"【PluginReload】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.PluginTriggered)
+    def on_plugin_triggered(self, event: Event):
+        """监听插件触发事件"""
+        logger.info(f"========== 【PluginTriggered 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_plugin_triggered 被调用!")
+        if event and event.event_data:
+            logger.info(f"【PluginTriggered】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.CommandExcute)
+    def on_command_execute(self, event: Event):
+        """监听命令执行事件"""
+        logger.info(f"========== 【CommandExcute 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_command_execute 被调用!")
+        if event and event.event_data:
+            logger.info(f"【CommandExcute】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.SiteDeleted)
+    def on_site_deleted(self, event: Event):
+        """监听站点删除事件"""
+        logger.info(f"========== 【SiteDeleted 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_site_deleted 被调用!")
+        if event and event.event_data:
+            logger.info(f"【SiteDeleted】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.SiteUpdated)
+    def on_site_updated(self, event: Event):
+        """监听站点更新事件"""
+        logger.info(f"========== 【SiteUpdated 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_site_updated 被调用!")
+        if event and event.event_data:
+            logger.info(f"【SiteUpdated】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.SiteRefreshed)
+    def on_site_refreshed(self, event: Event):
+        """监听站点刷新事件"""
+        logger.info(f"========== 【SiteRefreshed 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_site_refreshed 被调用!")
+        if event and event.event_data:
+            logger.info(f"【SiteRefreshed】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.DownloadAdded)
+    def on_download_added(self, event: Event):
+        """监听下载添加事件"""
+        logger.info(f"========== 【DownloadAdded 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_download_added 被调用!")
+        if event and event.event_data:
+            logger.info(f"【DownloadAdded】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.HistoryDeleted)
+    def on_history_deleted(self, event: Event):
+        """监听历史记录删除事件"""
+        logger.info(f"========== 【HistoryDeleted 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_history_deleted 被调用!")
+        if event and event.event_data:
+            logger.info(f"【HistoryDeleted】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.DownloadFileDeleted)
+    def on_download_file_deleted(self, event: Event):
+        """监听下载源文件删除事件"""
+        logger.info(f"========== 【DownloadFileDeleted 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_download_file_deleted 被调用!")
+        if event and event.event_data:
+            logger.info(f"【DownloadFileDeleted】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.DownloadDeleted)
+    def on_download_deleted(self, event: Event):
+        """监听下载任务删除事件"""
+        logger.info(f"========== 【DownloadDeleted 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_download_deleted 被调用!")
+        if event and event.event_data:
+            logger.info(f"【DownloadDeleted】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.UserMessage)
+    def on_user_message(self, event: Event):
+        """监听用户外来消息事件"""
+        logger.info(f"========== 【UserMessage 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_user_message 被调用!")
+        if event and event.event_data:
+            logger.info(f"【UserMessage】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.WebhookMessage)
+    def on_webhook_message(self, event: Event):
+        """监听Webhook消息事件"""
+        logger.info(f"========== 【WebhookMessage 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_webhook_message 被调用!")
+        if event and event.event_data:
+            logger.info(f"【WebhookMessage】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.SubscribeAdded)
+    def on_subscribe_added(self, event: Event):
+        """监听订阅添加事件"""
+        logger.info(f"========== 【SubscribeAdded 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_subscribe_added 被调用!")
+        if event and event.event_data:
+            logger.info(f"【SubscribeAdded】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.SubscribeModified)
+    def on_subscribe_modified(self, event: Event):
+        """监听订阅调整事件"""
+        logger.info(f"========== 【SubscribeModified 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_subscribe_modified 被调用!")
+        if event and event.event_data:
+            logger.info(f"【SubscribeModified】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.SubscribeDeleted)
+    def on_subscribe_deleted(self, event: Event):
+        """监听订阅删除事件"""
+        logger.info(f"========== 【SubscribeDeleted 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_subscribe_deleted 被调用!")
+        if event and event.event_data:
+            logger.info(f"【SubscribeDeleted】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.SubscribeComplete)
+    def on_subscribe_complete(self, event: Event):
+        """监听订阅完成事件"""
+        logger.info(f"========== 【SubscribeComplete 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_subscribe_complete 被调用!")
+        if event and event.event_data:
+            logger.info(f"【SubscribeComplete】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.SystemError)
+    def on_system_error(self, event: Event):
+        """监听系统错误事件"""
+        logger.info(f"========== 【SystemError 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_system_error 被调用!")
+        if event and event.event_data:
+            logger.info(f"【SystemError】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.MetadataScrape)
+    def on_metadata_scrape(self, event: Event):
+        """监听刮削元数据事件"""
+        logger.info(f"========== 【MetadataScrape 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_metadata_scrape 被调用!")
+        if event and event.event_data:
+            logger.info(f"【MetadataScrape】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.ModuleReload)
+    def on_module_reload(self, event: Event):
+        """监听模块重载事件"""
+        logger.info(f"========== 【ModuleReload 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_module_reload 被调用!")
+        if event and event.event_data:
+            logger.info(f"【ModuleReload】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def on_config_changed(self, event: Event):
+        """监听配置项更新事件"""
+        logger.info(f"========== 【ConfigChanged 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_config_changed 被调用!")
+        if event and event.event_data:
+            logger.info(f"【ConfigChanged】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.MessageAction)
+    def on_message_action(self, event: Event):
+        """监听消息交互动作事件"""
+        logger.info(f"========== 【MessageAction 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_message_action 被调用!")
+        if event and event.event_data:
+            logger.info(f"【MessageAction】event_data: {event.event_data}")
+
+    @eventmanager.register(EventType.WorkflowExecute)
+    def on_workflow_execute(self, event: Event):
+        """监听工作流执行事件"""
+        logger.info(f"========== 【WorkflowExecute 事件】 ==========")
+        logger.info(f"【JavaUploaderNotifier】on_workflow_execute 被调用!")
+        if event and event.event_data:
+            logger.info(f"【WorkflowExecute】event_data: {event.event_data}")
 
     def _process_transfer_push(self, meta, mediainfo, transferinfo, season_episode=None, username=None):
         """
